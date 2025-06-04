@@ -44,82 +44,32 @@ def monitor_resources(interval=1):
         print(f"CPU Usage: {cpu_percent}% | RAM Usage: {ram_percent}%")
         time.sleep(interval)  # Set the interval for checking resources
 
-def is_chat_bubble(img, bubble_color):
-    """Detects and extracts only blue or white chat bubbles based on color."""
-    hsv_img = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
-    if bubble_color == 'blue':
-        lower_blue = np.array([105, 160, 180])
-        upper_blue = np.array([115, 255, 255])
-        mask = cv2.inRange(hsv_img, lower_blue, upper_blue)
-    elif bubble_color == 'white':
-        lower_white = np.array([0, 0, 240])
-        upper_white = np.array([180, 10, 255])
-        mask = cv2.inRange(hsv_img, lower_white, upper_white)
-    else:
-        return None
 
-    result = cv2.bitwise_and(img, img, mask=mask)
-    gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
-    processed_bubble = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-    
-    return processed_bubble
 
 def perform_ocr(frame_folder):
     transcript = []
     frames = sorted([frame for frame in os.listdir(frame_folder) if frame.endswith('.png')])
-    selected_frames = frames[::5]  # Process every 5th frame
+    selected_frames = frames[::1]  # Process every nth frame
 
     # Start the resource monitoring in a separate thread
     monitor_thread = threading.Thread(target=monitor_resources, args=(1,), daemon=True)
     monitor_thread.start()
 
-    # Using tqdm to add a progress bar to the loop
-    for frame in tqdm(selected_frames, desc="Processing chat bubbles (every 5th frame)"):
+    for frame in tqdm(selected_frames, desc="Processing chat bubbles (every 1th frame)"):
+    # Read each image frame
         img = cv2.imread(os.path.join(frame_folder, frame))
-
-        blue_bubble = is_chat_bubble(img, 'blue')
-        white_bubble = is_chat_bubble(img, 'white')
-
-        text_blue = pytesseract.image_to_string(blue_bubble, lang='chi_sim+eng').strip()
-        if text_blue:
-            transcript.append(f"Blue Bubble (Your Message): {text_blue}")
-
-        text_white = pytesseract.image_to_string(white_bubble, lang='chi_sim+eng').strip()
-        if text_white:
-            transcript.append(f"White Bubble (Other’s Message): {text_white}")
     
-    print("OCR processing complete.")
-    return transcript
-
-
-
-""" Old ETA counter
-def perform_ocr(frame_folder):
-    transcript = []
-    frames = sorted([frame for frame in os.listdir(frame_folder) if frame.endswith('.png')])
-    total_frames = len(frames)
-    
-    start_time = time.time()  # Start the timer
-    
-    for idx, frame in enumerate(frames):
-        img = cv2.imread(os.path.join(frame_folder, frame))
-        # Specify both Simplified Chinese and English
+    # Use OCR to detect text in the image without filtering by color
         text = pytesseract.image_to_string(img, lang='chi_sim+eng').strip()
-        
-        if text:
-            transcript.append(text)
-        
-        # Estimate time remaining every 50 frames
-        if (idx + 1) % 50 == 0:
-            elapsed_time = time.time() - start_time
-            avg_time_per_frame = elapsed_time / (idx + 1)
-            remaining_time = avg_time_per_frame * (total_frames - (idx + 1))
-            print(f"Processed {idx + 1}/{total_frames} frames... Estimated time remaining: {remaining_time:.2f} seconds")
     
-    print("OCR processing complete.")
+    # If any text is detected, append it to the transcript
+        if text:
+            transcript.append(f"Chat Message: {text}")
+
     return transcript
-"""
+
+
 
 # Function to check similarity
 def is_similar(a, b, threshold=0.9):
@@ -162,6 +112,6 @@ def process_frames_to_text(frame_folder, output_text_path):
             file.write(line + "\n")
 
 # Usage example
-frame_folder = ""  # Folder where your frames are located
-output_text_path = ""  # Output file path for the OCR transcript
+frame_folder = '/Users/rx/Desktop/Law 206/Quiz 5'  # Folder where your frames are located
+output_text_path = '/Users/rx/Desktop/Quiz5'  # Output file path for the OCR transcript
 process_frames_to_text(frame_folder, output_text_path)

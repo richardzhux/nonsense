@@ -2,8 +2,8 @@ import os
 from PIL import Image
 
 # Define the folder where your images are stored
-input_folder = '/Users/rx/Desktop/Law 206 Quiz'
-output_folder = '/Users/rx/Desktop/Law 206 Quiz Crop'
+input_folder = '/Users/rx/Desktop/Quiz 8'
+output_folder = '/Users/rx/Desktop/Quiz 8'
 
 # Create output folder if it doesn't exist
 os.makedirs(output_folder, exist_ok=True)
