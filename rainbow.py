@@ -1,215 +1,456 @@
-import folium, math, os, webbrowser, pytz
-import numpy as np
-from datetime import datetime, timedelta
-from PIL import Image, ImageDraw, ImageFont
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+import json
+import math
+import os
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import pytz
+import pysolar.solar
 from astral import LocationInfo
 from astral.sun import sun
 from geopy.distance import geodesic
 from geopy.point import Point
 
-# Constants
-RAINBOW_ANGLE_DEG = 42  # Precise rainbow cone angle (in degrees)
-EARTH_RADIUS = 6371008.8  # Earth radius in meters, more precise value
+# Core optics constants
+RAINBOW_ANGLE_DEG = 42.0
 
-# Coordinates for six fountains
-fountains = [
+# Coordinates for six fountains (center is roughly the average of these points)
+FOUNTAINS: Sequence[Tuple[float, float]] = [
     (42.054788, -87.672590),
     (42.054573, -87.672849),
     (42.054710, -87.673108),
     (42.054945, -87.673079),
-    (42.054963, -87.672736)
-] # (42.054756, -87.672833) is the center
+    (42.054963, -87.672736),
+    (42.054756, -87.672833),
+]
 
-# Function to add two lines representing the 2D boundary of the rainbow visibility cone
-def add_rainbow_boundary_to_map_all(fountain_lat, fountain_lon, sun_azimuth, angle_deg, map_object):
-    # Define the distance for the projection of the rainbow cone boundary (e.g., 100 meters)
-    boundary_length_m = 120
-    
-    # Calculate two lines at the 42-degree boundary (left and right of the Sun's azimuth)
-    for angle_offset in [-angle_deg, angle_deg]:
-        angle_rad = math.radians(sun_azimuth + angle_offset)
-        
-        # Calculate the lat/lon change for this boundary
-        d_lat = (boundary_length_m / EARTH_RADIUS) * (180 / math.pi)
-        d_lon = (boundary_length_m / (EARTH_RADIUS * math.cos(math.radians(fountain_lat)))) * (180 / math.pi)
-        
-        # Corrected: Latitude uses cos, Longitude uses sin
-        boundary_lat = fountain_lat + d_lat * math.cos(angle_rad)
-        boundary_lon = fountain_lon + d_lon * math.sin(angle_rad)
-        
-        # Add a line from the fountain to the boundary with higher weight and opacity to ensure visibility
-        folium.PolyLine([(fountain_lat, fountain_lon), (boundary_lat, boundary_lon)],
-                        color='blue', weight=2.5, opacity=0.25).add_to(map_object)
-    
-centrale_lat, centrale_lon = 42.054756, -87.672833
+CENTRAL_LAT, CENTRAL_LON = 42.054756, -87.672833
 
 
-def add_rainbow_boundary_to_map_centrale(centrale_lat, centrale_lon, sun_azimuth, angle_deg, map_object):
-    # Define the distance for the projection of the rainbow cone boundary (e.g., 100 meters)
-    boundary_length_m = 500
-    
-    # Calculate two lines at the 42-degree boundary (left and right of the Sun's azimuth)
-    for angle_offset in [-angle_deg, angle_deg]:
-        angle_rad = math.radians(sun_azimuth + angle_offset)
-        
-        # Calculate the lat/lon change for this boundary
-        d_lat = (boundary_length_m / EARTH_RADIUS) * (180 / math.pi)
-        d_lon = (boundary_length_m / (EARTH_RADIUS * math.cos(math.radians(centrale_lat)))) * (180 / math.pi)
-        
-        # Corrected: Latitude uses cos, Longitude uses sin
-        boundary_lat = centrale_lat + d_lat * math.cos(angle_rad)
-        boundary_lon = centrale_lon + d_lon * math.sin(angle_rad)
-        
-        # Add a line from the fountain to the boundary with higher weight and opacity to ensure visibility
-        folium.PolyLine([(centrale_lat, centrale_lon), (boundary_lat, boundary_lon)],
-                        color='lightpink', weight=77, opacity=0.55).add_to(map_object)
+@dataclass
+class VisualizationConfig:
+    """Tunable parameters for the visualization."""
+
+    sun_line_length_m: float = 700.0
+    timezone: str = "America/Chicago"
+    eye_height_m: float = 1.6
+    droplet_heights_m: Sequence[float] = field(default_factory=lambda: (2.0, 3.5, 5.0))
+    theta_min_deg: float = 40.0
+    theta_max_deg: float = 42.0
+    lateral_spread_deg: float = 18.0
+    sector_samples: int = 24
+    include_all_fountains: bool = True
 
 
+MAP_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Rainbow Visibility Explorer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; }}
+        #map {{ position: absolute; inset: 0; }}
+        .info-panel {{
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            padding: 12px 14px;
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.85);
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(6px);
+            max-width: 320px;
+            font-size: 14px;
+            line-height: 1.45;
+        }}
+        .info-panel h1 {{
+            font-size: 16px;
+            margin: 0 0 6px 0;
+            color: #f472b6;
+        }}
+        .info-panel kbd {{
+            font-size: 12px;
+            background: rgba(148, 163, 184, 0.2);
+            border-radius: 4px;
+            padding: 2px 6px;
+            margin-left: 4px;
+        }}
+        .legend {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 12px;
+            margin-top: 8px;
+        }}
+        .legend-item {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .swatch {{
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: 1px solid rgba(15, 23, 42, 0.7);
+        }}
+        .swatch.sun {{ background: #facc15; }}
+        .swatch.zone {{ background: linear-gradient(90deg, #34d399, #f472b6); border-radius: 2px; width: 28px; }}
+        .swatch.edge {{ background: #0ea5e9; border-radius: 2px; width: 20px; }}
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="info-panel" id="info-panel"></div>
+    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+    <script>
+        const geojson = {geojson};
+        const metadata = {metadata};
 
-# Function to add a line representing the sunlight direction
-def add_sunlight_direction(fountain_lat, fountain_lon, sun_azimuth, map_object):
-    # Define the length of the line (e.g., 100 meters for visualization)
-    line_length_m = 500
-    
-    # Corrected calculation for azimuth direction (azimuth is measured clockwise from north)
-    azimuth_rad = math.radians(sun_azimuth)
-    
-    # Calculate the end point of the line (in the direction of the Sun's azimuth)
-    d_lat = (line_length_m / EARTH_RADIUS) * (180 / math.pi)
-    d_lon = (line_length_m / (EARTH_RADIUS * math.cos(math.radians(fountain_lat)))) * (180 / math.pi)
-    
-    end_lat = fountain_lat + d_lat * math.cos(azimuth_rad)
-    end_lon = fountain_lon + d_lon * math.sin(azimuth_rad)
-    
-    # Add the line to the map
-    folium.PolyLine([(fountain_lat, fountain_lon), (end_lat, end_lon)], color='yellow', weight=5, opacity=1).add_to(map_object)
+        const map = new maplibregl.Map({{
+            container: 'map',
+            style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+            center: [{center_lon}, {center_lat}],
+            zoom: {zoom}
+        }});
 
-# Function to get the Sun's position using pysolar
-def get_sun_position(lat, lon, date_time):
-    import pysolar.solar
+        map.addControl(new maplibregl.NavigationControl({{ visualizePitch: true }}));
+
+        map.on('load', () => {{
+            map.addSource('rainbow', {{
+                type: 'geojson',
+                data: geojson
+            }});
+
+            map.addLayer({{
+                id: 'viewing-zone-fill',
+                type: 'fill',
+                source: 'rainbow',
+                filter: ['==', ['get', 'kind'], 'view-zone'],
+                paint: {{
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'height'],
+                        1.0, '#34d399',
+                        3.0, '#fbbf24',
+                        5.0, '#f472b6'
+                    ],
+                    'fill-opacity': 0.35
+                }}
+            }});
+
+            map.addLayer({{
+                id: 'viewing-zone-outline',
+                type: 'line',
+                source: 'rainbow',
+                filter: ['==', ['get', 'kind'], 'view-zone'],
+                paint: {{
+                    'line-color': '#0ea5e9',
+                    'line-width': 1.5
+                }}
+            }});
+
+            map.addLayer({{
+                id: 'sun-direction',
+                type: 'line',
+                source: 'rainbow',
+                filter: ['==', ['get', 'kind'], 'sun-line'],
+                paint: {{
+                    'line-color': '#facc15',
+                    'line-width': 4
+                }}
+            }});
+
+            map.addLayer({{
+                id: 'fountains',
+                type: 'circle',
+                source: 'rainbow',
+                filter: ['==', ['get', 'kind'], 'fountain'],
+                paint: {{
+                    'circle-radius': 5,
+                    'circle-color': '#38bdf8',
+                    'circle-stroke-color': '#0f172a',
+                    'circle-stroke-width': 1.5
+                }}
+            }});
+
+            map.addLayer({{
+                id: 'fountain-labels',
+                type: 'symbol',
+                source: 'rainbow',
+                filter: ['==', ['get', 'kind'], 'fountain'],
+                layout: {{
+                    'text-field': ['get', 'label'],
+                    'text-size': 12,
+                    'text-offset': [0, 1.2]
+                }},
+                paint: {{
+                    'text-color': '#e2e8f0',
+                    'text-halo-color': '#0f172a',
+                    'text-halo-width': 1
+                }}
+            }});
+        }});
+
+        const infoPanel = document.getElementById('info-panel');
+        const sunrise = new Date(metadata.sunrise).toLocaleTimeString([], {{ hour: '2-digit', minute: '2-digit' }});
+        const sunset = new Date(metadata.sunset).toLocaleTimeString([], {{ hour: '2-digit', minute: '2-digit' }});
+        const generated = new Date(metadata.generatedAt).toLocaleString();
+        infoPanel.innerHTML = `
+            <h1>${{metadata.title}}</h1>
+            <div><strong>Sun altitude:</strong> ${{metadata.sunAltitude.toFixed(2)}}°</div>
+            <div><strong>Sun azimuth:</strong> ${{metadata.sunAzimuth.toFixed(2)}}°</div>
+            <div><strong>Eye height:</strong> ${{metadata.eyeHeight.toFixed(2)}} m</div>
+            <div><strong>Droplet heights:</strong> ${{metadata.dropletHeights.join(', ')}} m</div>
+            <div><strong>Sunrise / Sunset:</strong> ${{sunrise}} / ${{sunset}}</div>
+            <div><strong>Generated:</strong> ${{generated}}</div>
+            <div class="legend">
+                <span class="legend-item"><span class="swatch sun"></span>Sun ray</span>
+                <span class="legend-item"><span class="swatch zone"></span>Viewing band</span>
+                <span class="legend-item"><span class="swatch edge"></span>Band outline</span>
+            </div>
+        `;
+    </script>
+</body>
+</html>
+"""
+
+
+def project_point(lat: float, lon: float, bearing_deg: float, distance_m: float) -> Tuple[float, float]:
+    """Geodesic projection that respects the Earth ellipsoid and azimuth."""
+    origin = Point(lat, lon)
+    destination = geodesic(meters=distance_m).destination(origin, bearing_deg)
+    return destination.latitude, destination.longitude
+
+
+def get_sun_position(lat: float, lon: float, date_time) -> Tuple[float, float]:
+    """Return solar altitude and azimuth for the supplied moment."""
     altitude = pysolar.solar.get_altitude(lat, lon, date_time)
     azimuth = pysolar.solar.get_azimuth(lat, lon, date_time)
     return altitude, azimuth
 
-# Function to get the sunrise and sunset times using astral
-def get_sunrise_sunset(lat, lon, date_time):
+
+def get_sunrise_sunset(lat: float, lon: float, date_time, timezone: str) -> Tuple[datetime, datetime]:
     location = LocationInfo(latitude=lat, longitude=lon)
     sun_info = sun(location.observer, date=date_time)
-    sunrise = sun_info['sunrise'].astimezone(pytz.timezone('America/Chicago'))
-    sunset = sun_info['sunset'].astimezone(pytz.timezone('America/Chicago'))
-    return sunrise, sunset
+    tz = pytz.timezone(timezone)
+    return sun_info["sunrise"].astimezone(tz), sun_info["sunset"].astimezone(tz)
 
-# Function to create a map for a specific time and save it as an image using Selenium
-def create_map_for_time(date_time, filename, driver):
-    # Create the map centered at the first fountain
-    map_fountain = folium.Map(location=[42.054756, -87.672833], zoom_start=17)
-    
-    # Get the Sun's position (altitude and azimuth)
-    sun_altitude, sun_azimuth = get_sun_position(42.054756, -87.672833, date_time)
-    
-    # Get sunrise and sunset times
-    sunrise, sunset = get_sunrise_sunset(42.054756, -87.672833, date_time)
 
-    # Format the current time, sunrise, and sunset in 'yyyy.mm.dd.hhmm' format
-    current_time_str = date_time.strftime("%Y.%m.%d.%H%M")
+def viewing_radius(delta_z: float, theta_deg: float, sun_altitude_deg: float) -> Optional[float]:
+    """Solve for the horizontal range where observers can stand for a droplet/angle."""
+    phi_deg = theta_deg - sun_altitude_deg
+    tan_phi = math.tan(math.radians(phi_deg))
+    if abs(tan_phi) < 1e-6:
+        return None
+    radius = delta_z / tan_phi
+    if not math.isfinite(radius) or radius <= 0:
+        return None
+    return radius
+
+
+def make_view_zone_feature(
+    lat: float,
+    lon: float,
+    fountain_label: str,
+    droplet_height_m: float,
+    sun_azimuth: float,
+    sun_altitude: float,
+    config: VisualizationConfig,
+) -> Optional[Dict]:
+    """Build a GeoJSON polygon describing the ground viewing band for a droplet height."""
+    delta_z = droplet_height_m - config.eye_height_m
+    radius_far = viewing_radius(delta_z, config.theta_max_deg, sun_altitude)
+    radius_near = viewing_radius(delta_z, config.theta_min_deg, sun_altitude)
+    if radius_far is None or radius_near is None:
+        return None
+
+    inner = min(radius_far, radius_near)
+    outer = max(radius_far, radius_near)
+    if inner <= 0 or outer <= 0 or inner >= outer:
+        return None
+
+    bearing_center = (sun_azimuth + 180.0) % 360.0
+    start_bearing = bearing_center - config.lateral_spread_deg
+    end_bearing = bearing_center + config.lateral_spread_deg
+    samples = max(2, int(config.sector_samples))
+    step = (end_bearing - start_bearing) / (samples - 1)
+
+    outer_points: List[Tuple[float, float]] = []
+    for i in range(samples):
+        bearing = start_bearing + step * i
+        lat_o, lon_o = project_point(lat, lon, bearing, outer)
+        outer_points.append((lon_o, lat_o))
+
+    inner_points: List[Tuple[float, float]] = []
+    for i in range(samples):
+        bearing = end_bearing - step * i
+        lat_i, lon_i = project_point(lat, lon, bearing, inner)
+        inner_points.append((lon_i, lat_i))
+
+    ring = outer_points + inner_points + [outer_points[0]]
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Polygon", "coordinates": [ring]},
+        "properties": {
+            "kind": "view-zone",
+            "height": droplet_height_m,
+            "label": fountain_label,
+            "radiusMin": inner,
+            "radiusMax": outer,
+            "bearing": bearing_center,
+        },
+    }
+
+
+def build_geojson(
+    sun_azimuth: float,
+    sun_altitude: float,
+    config: VisualizationConfig,
+) -> Dict:
+    """Create the GeoJSON payload used by MapLibre."""
+    features: List[Dict] = []
+
+    def append_point(lat: float, lon: float, label: str) -> None:
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                "properties": {"kind": "fountain", "label": label},
+            }
+        )
+
+    for idx, (lat, lon) in enumerate(FOUNTAINS, start=1):
+        if idx == len(FOUNTAINS):
+            label = "Centrale"
+        else:
+            label = f"Fountain {idx}"
+        include_fountain = config.include_all_fountains or label == "Centrale"
+        if include_fountain:
+            append_point(lat, lon, label)
+            for height in config.droplet_heights_m:
+                feature = make_view_zone_feature(
+                    lat,
+                    lon,
+                    label,
+                    height,
+                    sun_azimuth,
+                    sun_altitude,
+                    config,
+                )
+                if feature:
+                    features.append(feature)
+
+    sun_start = (CENTRAL_LON, CENTRAL_LAT)
+    sun_end_lat, sun_end_lon = project_point(
+        CENTRAL_LAT, CENTRAL_LON, sun_azimuth, config.sun_line_length_m
+    )
+    features.append(
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [list(sun_start), [sun_end_lon, sun_end_lat]],
+            },
+            "properties": {"kind": "sun-line"},
+        }
+    )
+
+    return {"type": "FeatureCollection", "features": features}
+
+
+def render_map_html(geojson: Dict, metadata: Dict) -> str:
+    """Populate the HTML template with the current scene."""
+    return MAP_TEMPLATE.format(
+        geojson=json.dumps(geojson),
+        metadata=json.dumps(metadata),
+        center_lat=CENTRAL_LAT,
+        center_lon=CENTRAL_LON,
+        zoom=17,
+    )
+
+
+def create_map_for_time(date_time, filename: str, config: VisualizationConfig) -> str:
+    """Generate the HTML file for the requested instant."""
+    sun_altitude, sun_azimuth = get_sun_position(CENTRAL_LAT, CENTRAL_LON, date_time)
+    sunrise, sunset = get_sunrise_sunset(CENTRAL_LAT, CENTRAL_LON, date_time, config.timezone)
+
+    timestamp_str = date_time.strftime("%Y.%m.%d.%H%M")
     sunrise_str = sunrise.strftime("%Y.%m.%d.%H%M")
     sunset_str = sunset.strftime("%Y.%m.%d.%H%M")
 
-    # Output the current time, sun altitude, azimuth, and sunrise/sunset times to the terminal
-    print(f"{current_time_str}")
+    print(timestamp_str)
     print(f"Sunrise: {sunrise_str}, Sunset: {sunset_str}")
     print(f"Sun Altitude: {sun_altitude:.2f}°, Sun Azimuth: {sun_azimuth:.2f}°")
 
-    # Only proceed if the Sun's altitude is less than 42 degrees
-    if sun_altitude < 42 and sun_altitude > 0:
-        print(f"Calculating rainbow visibility... 🌈")
+    if sun_altitude <= 0:
+        print("Rainbow not visible, the Sun is below the horizon.")
+        return ""
+    if sun_altitude >= RAINBOW_ANGLE_DEG:
+        print("Rainbow not visible, the Sun is too high.")
+        return ""
 
-        add_sunlight_direction(42.054756, -87.672833, sun_azimuth, map_fountain)
-        add_rainbow_boundary_to_map_centrale(centrale_lat, centrale_lon, sun_azimuth, RAINBOW_ANGLE_DEG, map_fountain)
+    print("Calculating rainbow visibility… 🌈")
+    geojson = build_geojson(sun_azimuth, sun_altitude, config)
 
-        """
-        # Iterate over all fountains and add their rainbow boundary and sunlight direction
-        for fountain_lat, fountain_lon in fountains:
-            # Add the rainbow boundary lines (representing the 2D boundary of the rainbow cone)
-            # add_rainbow_boundary_to_map(fountain_lat, fountain_lon, sun_azimuth, RAINBOW_ANGLE_DEG, map_fountain)
-            add_rainbow_boundary_to_map_all(fountain_lat, fountain_lon, sun_azimuth, RAINBOW_ANGLE_DEG, map_fountain)
+    metadata = {
+        "title": "Rainbow Visibility",
+        "sunAltitude": sun_altitude,
+        "sunAzimuth": sun_azimuth,
+        "sunrise": sunrise.isoformat(),
+        "sunset": sunset.isoformat(),
+        "generatedAt": date_time.isoformat(),
+        "eyeHeight": config.eye_height_m,
+        "dropletHeights": list(config.droplet_heights_m),
+        "thetaRange": [config.theta_min_deg, config.theta_max_deg],
+    }
 
-            
-            # Add the sunlight direction line to the map
-        """
+    html = render_map_html(geojson, metadata)
 
-    elif sun_altitude > 42:
-        print("Rainbow not visible, the Sun is too high!")
-        return   # Exit the function immediately
-    
-    else:
-        print("Rainbow not visible, the is sleeping! (below horizon).")
-        return
+    output_folder = os.path.dirname(os.path.abspath(__file__))
+    output_path = os.path.join(output_folder, f"{filename}.html")
+    with open(output_path, "w", encoding="utf-8") as fp:
+        fp.write(html)
 
-    # Get the folder where the current script is located
-    current_folder = os.path.dirname(os.path.abspath(__file__))
-    
-    # Define the output file paths in the same folder as the script
-    map_html = os.path.join(current_folder, f"{filename}.html")
-    
-    # Save the map as an HTML file
-    map_fountain.save(map_html)
+    print(f"Map saved to {output_path}")
+    return output_path
 
-    # Automatically open the HTML file in the browser
-    webbrowser.open(f"file://{os.path.abspath(map_html)}", new=2)  # Opens in a new browser tab
 
-    # Convert HTML to PNG using Selenium
-    driver.get(f"file://{os.path.abspath(map_html)}")
-    screenshot_filename = os.path.join(current_folder, f"{filename}.png")
-    driver.save_screenshot(screenshot_filename)
-    
-    return screenshot_filename  # Return the PNG filename
-
-def validate_time_input(time_input):
+def validate_time_input(time_input: str) -> Optional[datetime]:
     """
     Validate and parse time in yyyy.mm.dd.hhmm format.
     Automatically adjusts for input format and forbids dates before October 15, 1582.
-    Returns a datetime object if valid. Prints an error message if invalid.
     """
     try:
-        # Split the input by '.'
-        parts = time_input.split('.')
-        
-        # Check that we have exactly 4 parts: year, month, day, and hhmm (no extra parts)
+        parts = time_input.split(".")
         if len(parts) != 4:
             print("Invalid time format. Please use 'yyyy.mm.dd.hhmm'.")
             return None
 
         year, month, day, time_part = parts
-        
-        # Validate year, ensure it's between 1582 and 9999
+
         if not (1582 <= int(year) <= 9999):
             print("Invalid year. The year must be between 1582 and 9999.")
             return None
-        
-        # Validate and auto-correct month (convert 1 to 01)
+
         if not (1 <= int(month) <= 12):
             print("Invalid month. The month must be between 1 and 12.")
             return None
         month = month.zfill(2)
 
-        # Validate and auto-correct day (convert 1 to 01)
         if not (1 <= int(day) <= 31):
             print("Invalid day. The day must be between 1 and 31.")
             return None
         day = day.zfill(2)
 
-        # Validate the time part (hhmm should be exactly 4 digits)
         if len(time_part) != 4 or not time_part.isdigit():
             print("Invalid time format. The time must be exactly 4 digits in hhmm format.")
             return None
         hour = int(time_part[:2])
         minute = int(time_part[2:])
 
-        # Ensure hours and minutes are valid
         if not (0 <= hour < 24):
             print("Invalid hour. Hours should be between 0 and 23.")
             return None
@@ -217,13 +458,8 @@ def validate_time_input(time_input):
             print("Invalid minutes. Minutes should be between 0 and 59.")
             return None
 
-        # Create the formatted date-time string
         formatted_input = f"{year.zfill(4)}-{month}-{day} {time_part[:2]}:{time_part[2:]}"
-        
-        # Parse the date and time
         time_obj = datetime.strptime(formatted_input, "%Y-%m-%d %H:%M")
-
-        # Ensure the date is after October 15, 1582
         cutoff_date = datetime(1582, 10, 15)
         if time_obj < cutoff_date:
             print("Invalid date. The date must be after October 15, 1582.")
@@ -235,53 +471,36 @@ def validate_time_input(time_input):
         return None
 
 
-# Main function
-def main():
-    # Set up Selenium for Chrome (use ChromeDriver)
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Ensure GUI is off
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-
-    # Provide the path to your ChromeDriver
-    driver_path = '/Users/rx/Downloads/chromedriver-mac-arm64/chromedriver'  # Replace with the actual path
-    driver = webdriver.Chrome(service=Service(driver_path), options=chrome_options)
+def main() -> None:
+    config = VisualizationConfig()
+    tz = pytz.timezone(config.timezone)
 
     while True:
-        # Ask the user for input: use current time or input custom time
-        choice = input("Enter 'current' for current time, 'custom' to input date and time (format: yyyy.mm.dd.hhmm), or 'q'/'esc' to quit: ").strip().lower()
+        choice = input(
+            "Enter 'current' for current time, 'custom' for yyyy.mm.dd.hhmm, or 'q' to quit: "
+        ).strip().lower()
 
-        if choice in ['q', 'esc']:
+        if choice in {"q", "esc"}:
             print("Exiting program.")
-            break  # Exit the loop and program
+            break
 
-        elif choice == 'current':
-            # Use the current time to generate the rainbow visibility map
-            timezone = pytz.timezone('America/Chicago')
-            current_time = datetime.now(timezone)
-            create_map_for_time(current_time, f"rainbow_viewline_{current_time}", driver)
-            print(f"Map for current time created and opened in browser: rainbow_viewline_{current_time}.html")
-        
-        elif choice == 'custom':
-            # Ask the user for a custom date and time
+        if choice == "current":
+            current_time = datetime.now(tz)
+            create_map_for_time(current_time, f"rainbow_viewline_{current_time:%Y%m%d_%H%M}", config)
+            continue
+
+        if choice == "custom":
             custom_date_time_str = input("Enter the date and time (yyyy.mm.dd.hhmm): ").strip()
-            
-            # Validate and parse the custom date and time
             custom_date_time = validate_time_input(custom_date_time_str)
-            
-            if custom_date_time:
-                # If the validation is successful, generate the map for the custom date and time
-                timezone = pytz.timezone('America/Chicago')
-                custom_date_time = timezone.localize(custom_date_time)
-                create_map_for_time(custom_date_time, f"rainbow_visibility_{custom_date_time_str}", driver)
-                print(f"Map for custom time {custom_date_time_str} created and opened in browser.")
-            else:
+            if not custom_date_time:
                 print("Invalid date/time input. Please try again.")
-        
-        else:
-            print("Invalid input. Please enter 'current', 'custom', or 'q'/'esc' to quit.")
-    
-    driver.quit()
+                continue
+            custom_date_time = tz.localize(custom_date_time)
+            create_map_for_time(custom_date_time, f"rainbow_visibility_{custom_date_time_str}", config)
+            continue
+
+        print("Invalid input. Please enter 'current', 'custom', or 'q'.")
+
 
 if __name__ == "__main__":
     main()
