@@ -7,17 +7,17 @@ Repository of one-off experiments, utilities, and study notes. Each file is inte
 - `Makefile` – Single `commit` recipe that stages everything, commits with a timestamped message, and pushes to `origin main`. Handy shortcut, but running it on the wrong branch or with unwanted files staged will push those changes immediately.
 - `hash.py` / `decrypt.py` – Toy pair for demonstrating salted SHA-256 hashing plus a reversible “keyboard shift” used to obfuscate a symmetric key. Both scripts prompt on stdin and reuse the same row-wise key map. They call the output “encrypted,” but nothing is actually decrypted because SHA-256 is one-way; the scripts simply recompute the hash to verify user input, so treat them as demos only.
 - `icbcbankstatement.py` – Regex parser for Chinese ICBC transaction narratives. It extracts per-day totals by currency (EUR/DKK/SEK/USD/CNY) from the embedded sample text, assembles a pandas DataFrame, and prints currency totals. Assumes the SMS/email wording and punctuation stay identical; the combined regex can miss or double-count amounts if the format shifts. `collections.Counter` is imported but unused.
-- `hrv.py` – Headless Selenium scraper that walks every date from 2024‑11‑11 to “now,” loading Wunderground’s history pages (`lib-city-history-summary` widget) for KILEVANS56 in Evanston. It pulls summary spans (high/low temp, precipitation, etc.) and writes `evanston_weather_data.csv`. Any markup change or slow load triggers the fallback branch that skips days; there’s no retry or caching, so expect long runtimes and potential rate-limit issues.
+- `hrv.py` – Headless Selenium scraper that walks every date from 2024‑11‑11 to “now,” loading Wunderground’s history pages (`lib-city-history-summary` widget) for a configurable station path. It pulls summary spans (high/low temp, precipitation, etc.) and writes `weather_data.csv` by default. Any markup change or slow load triggers the fallback branch that skips days; there’s no retry or caching, so expect long runtimes and potential rate-limit issues.
 - `onedrivepic.py` – Counts photos by inspecting a `year/month` directory hierarchy (filenames must start with `YYYYMMDD`). It aggregates daily, weekly, and monthly totals since `start_date_input`, smooths each series, and plots raw vs. smoothed curves. Useful for personal activity tracking, but it assumes every directory follows the naming convention and loads the entire index into memory.
 - `wordsort.py` – Maintains a big vocabulary list inline, sorts the entries case-insensitively, reports duplicates, and prints how many words only appear once. Helpful for spotting repeated study terms (e.g., duplicated “Accession” entries or repeated Christopher Hitchens excerpts), but the vocabulary lives directly in the script, so editing requires modifying the code.
 
 ## Media & Visualization Tools
 
-- `audio2text.py` – Forces OpenAI Whisper “medium” to run on CPU and transcribes `/Users/rx/Downloads/bart.m4a`. Segments are formatted as `[start_time] text` and saved to `/Users/rx/Downloads/transcript.txt`. There is no CLI, batching, or error handling; hard-coded paths must be changed in the script, and `torch` is imported but unused.
+- `audio2text.py` – Forces OpenAI Whisper “medium” to run on CPU and transcribes a hard-coded local audio file. Segments are formatted as `[start_time] text` and saved to a fixed transcript path. There is no CLI, batching, or error handling; hard-coded paths must be changed in the script, and `torch` is imported but unused.
 - `videoocr.py` – End-to-end OCR pipeline for chat screenshots: optional (commented) frame extraction, per-frame OCR in `chi_sim+eng`, live CPU/RAM monitoring via a daemon thread, and deduplication using SequenceMatcher plus TF‑IDF/DBSCAN clustering before writing the final transcript. Paths, language packs, and frame sampling are hard-coded; the monitor thread never stops, and clustering assumes scikit-learn is present. `fuzzywuzzy` is imported but not used.
-- `gamma.py` – Uses NetworkX to sketch the signal flow of a gamma-ray coincidence setup. Nodes carry multi-line descriptions and are linked sequentially from source to counter. Saving fails because `plt.savefig` receives a directory path (`/Users/rx/Downloads`) instead of a filename; fix by appending a filename before calling `savefig`.
-- `rainbow.py` / `rainbow_visibility_YYYY.MM.DD.HHMM.html` – Generates Folium maps that overlay the 42° rainbow cone relative to several fountains near 42.054756° N, −87.672833° W. `rainbow.py` fetches sun altitude/azimuth via Pysolar/Astral, draws sunlight and “visibility cone” polylines, opens the map in a browser, screenshots it with Selenium, and loops interactively between “current” and custom timestamps (validated down to Gregorian cutover rules). Heavy geo/GUI dependencies and numerous hard-coded paths (ChromeDriver, font assets) mean it only works in the original author’s setup; the cone geometry is approximate because it reuses fixed ∆lat/∆lon offsets regardless of azimuth. The HTML file is an example output.
-- `cropwhite.py` – Batch crops every JPG/PNG in `/Users/rx/Desktop/Quiz 8` using a fixed bounding box and writes the result back into the same folder. Fast but destructive: outputs overwrite originals, and the crop tuple is specified in raw pixels without checking image dimensions or orientation.
+- `gamma.py` – Uses NetworkX to sketch the signal flow of a gamma-ray coincidence setup. Nodes carry multi-line descriptions and are linked sequentially from source to counter. Saving fails because `plt.savefig` receives a directory path instead of a filename; fix by appending a filename before calling `savefig`.
+- `rainbow.py` / `rainbow_visibility_YYYY.MM.DD.HHMM.html` – Generates Folium maps that overlay the 42° rainbow cone relative to a set of configurable fountain coordinates. `rainbow.py` fetches sun altitude/azimuth via Pysolar/Astral, draws sunlight and “visibility cone” polylines, opens the map in a browser, screenshots it with Selenium, and loops interactively between “current” and custom timestamps (validated down to Gregorian cutover rules). Heavy geo/GUI dependencies and numerous hard-coded paths (ChromeDriver, font assets) mean it only works in the original author’s setup; the cone geometry is approximate because it reuses fixed ∆lat/∆lon offsets regardless of azimuth. The HTML file is an example output.
+- `cropwhite.py` – Batch crops every JPG/PNG in a hard-coded source folder using a fixed bounding box and writes the result back into the same folder. Fast but destructive: outputs overwrite originals, and the crop tuple is specified in raw pixels without checking image dimensions or orientation.
 
 ## Simulation, Math & Physics
 
@@ -25,7 +25,7 @@ Repository of one-off experiments, utilities, and study notes. Each file is inte
 - `modfma.py` – Integrates a one-second sprint to 0.999999 c under three contrived thrust laws (F=ma, √(ma), ∛(ma)), accumulating energy expenditure and proper time. `lorentz_gamma` is computed but not fed back into the acceleration or force models, so the simulation is purely Newtonian despite the relativistic veneer; power draws ignore mass loss or engine limits.
 - `rindler.py` – Fully featured constant proper-acceleration planner (single leg and symmetric four-leg trips). Includes a bisection solver for the rapidity ratio, time/distance summaries in SI and astronomical units, and photon-rocket power/energy bookkeeping. Extremely useful reference, but `solve_eta_from_ratio` snaps low ratios to ~0 without warning, so sub-relativistic scenarios may quietly degrade.
 - `bianchi.py` – Collection of Manim scenes illustrating Rindler horizons, horizon detectors, quantum surface facets, and two derivations of black-hole entropy. Each scene assembles TeX/math objects and axes, but the file uses `np.exp` for the Boltzmann factor without importing NumPy, so rendering currently raises `NameError: name 'np' is not defined`.
-- `chaos.py` – Loads `~/Downloads/chaos01.csv`, renames its first three columns to `Time`, `Counts`, `isGate`, computes the gradient of `Counts` versus `Time`, and plots a Poincaré section sampled whenever `isGate == 1`. Requires at least two gate crossings and assumes the CSV column order never changes; no optional arguments or safeguards.
+- `chaos.py` – Loads a hard-coded local CSV, renames its first three columns to `Time`, `Counts`, `isGate`, computes the gradient of `Counts` versus `Time`, and plots a Poincaré section sampled whenever `isGate == 1`. Requires at least two gate crossings and assumes the CSV column order never changes; no optional arguments or safeguards.
 - `daylight.py` – Pure-Numpy daylight-duration map. Builds a latitude/day mesh, calculates solar declination, clips the hour-angle domain to [-1, 1], and plots both contour lines every two hours and a filled heat map. A nice self-contained visualization; does not model atmospheric refraction or leap years.
 - `shannon.py` – Demonstrates compression ratios for different entropy sources by writing three 1 MB text files (uniform, random, blocky) and measuring gzip output sizes. Great for teaching, but every execution writes six large files without cleanup or configuration hooks.
 
@@ -35,13 +35,13 @@ Repository of one-off experiments, utilities, and study notes. Each file is inte
 
 ## Text Analytics & Documentation
 
-- `grammar.py` – Contains a massive document-audit tool embedded inside a triple-quoted raw string assigned to `script`. Running this file writes `/mnt/data/doc_audit.py` and an accompanying requirements file, but the helper variable `reqs` is never defined before use, so execution fails unless you manually define `reqs` or copy the string contents out. If you want to use the actual auditor, extract `script` to its own file and fix the missing requirements definition.
+- `grammar.py` – Contains a massive document-audit tool embedded inside a triple-quoted raw string assigned to `script`. Running this file writes generated artifacts to a fixed local output folder and an accompanying requirements file, but the helper variable `reqs` is never defined before use, so execution fails unless you manually define `reqs` or copy the string contents out. If you want to use the actual auditor, extract `script` to its own file and fix the missing requirements definition.
 - `conlaw.qmd` – Quarto notebook filled with constitutional-law lecture notes: interpretive hypotheticals, doctrinal tables, case briefs, IRAC templates, and policy discussions. No executable code; render with Quarto to get a formatted HTML study packet.
 - `Test.py`, `modfma.py`, `rindler.py`, `bianchi.py`, `chaos.py`, `daylight.py`, `shannon.py`, and `rainbow.py` are good places to mine for math-heavy snippets/questions.
 
 ## Miscellaneous
 
-- `audio2text.py`, `videoocr.py`, `gamma.py`, `cropwhite.py`, and `onedrivepic.py` rely heavily on hard-coded absolute paths (`/Users/rx/...`). Update those before running on another machine.
+- `audio2text.py`, `videoocr.py`, `gamma.py`, `cropwhite.py`, and `onedrivepic.py` rely heavily on hard-coded paths. Update those before running on another machine.
 - `wechat.py` – Placeholder file with no content.
 - `README.md` – This guide. Update it whenever you add another one-off so future you doesn’t have to rediscover what each script does.
 
@@ -60,7 +60,7 @@ Repository of one-off experiments, utilities, and study notes. Each file is inte
     angle domain, and overlays contour/heat maps (daylight.py:23). Simple and self-contained; limitations are physical (no atmospheric
     refraction, leap years).
   - chaos.py:5 – Reads a CSV of rotor revolutions, takes the gradient of “Counts” w.r.t. “Time,” filters revolutions via an isGate flag,
-    and renders a Poincaré scatter (chaos.py:28). Assumes the input file lives at ~/Downloads, that columns appear in fixed order, and that
+    and renders a Poincaré scatter (chaos.py:28). Assumes the input file lives at a fixed local path, that columns appear in fixed order, and that
     the gradient denominator stays monotonic; any missing isGate rows raise immediately (chaos.py:18).
   - shannon.py:6 – Generates three 1 MB text corpora (random, uniform, blocky) and compares gzip ratios to illustrate entropy
     (shannon.py:41). Useful teaching snippet but every run writes six large files without cleanup; consider guarding the workload or
@@ -77,8 +77,8 @@ Repository of one-off experiments, utilities, and study notes. Each file is inte
     returns all merit cleanup; clustering assumes scikit‑learn is available and can explode on empty transcripts.
   - gamma.py:1 – NetworkX diagram of a gamma-ray coincidence apparatus with descriptive node labels (gamma.py:8). Saving fails because
     plt.savefig is given a directory (gamma.py:48) instead of a file; flowchart_path is reused for both directory and return value, so even
-    after fixing the path you’d still only print /Users/rx/Downloads.
-  - cropwhite.py:4 – Batch crops every JPG/PNG in /Users/rx/Desktop/Quiz 8 with a fixed bounding box and writes back into the same folder
+    after fixing the path you’d still only print the chosen output directory.
+  - cropwhite.py:4 – Batch crops every JPG/PNG in a hard-coded folder with a fixed bounding box and writes back into the same folder
     (cropwhite.py:5). Simple but destructive: outputs overwrite originals, the crop rectangle is hard-coded in pixels (cropwhite.py:13),
     and there’s no guard for orientation/size mismatches.
   - rainbow.py:1 – Ambitious rainbow-visibility mapper: Folium map creation, sun altitude/azimuth via Pysolar/Astral, optional boundary
@@ -101,7 +101,7 @@ Repository of one-off experiments, utilities, and study notes. Each file is inte
     unused.
   - onedrivepic.py:7 – Tallies daily/weekly/monthly counts of photos stored in a year/month folder hierarchy where filenames start with
     YYYYMMDD, then plots raw versus smoothed counts for each cadence (onedrivepic.py:48). Assumes strict naming conventions and loads
-    everything into memory; there’s no progress/logging, so traversing a big Camera Roll may feel opaque.
+    everything into memory; there’s no progress/logging, so traversing a big media archive may feel opaque.
   - hash.py:7 – CLI that salts and hashes a user-provided string, generates a random 16-char key, obfuscates it with a keyboard “shift
     right,” and verifies the reversible mapping (hash.py:82). Good toy example, but presenting the SHA-256 digest as an “encrypted message”
     and echoing the plaintext back (hash.py:102) could mislead someone into thinking it’s secure messaging.
@@ -118,7 +118,7 @@ Repository of one-off experiments, utilities, and study notes. Each file is inte
     derivations; heavy use of LaTeX-based MathTex objects and axes plotting (bianchi.py:50). The file references np.exp for the Boltzmann
     curve (bianchi.py:60) but never imports NumPy, so rendering raises a NameError.
   - grammar.py:1 – Massive one-file document auditor defined entirely inside a raw triple-quoted string (grammar.py:1) and written out
-    to /mnt/data/doc_audit.py when this file runs (grammar.py:689). The intended helper reqs is never defined before writing /mnt/data/
+    to a fixed local output path when this file runs (grammar.py:689). The intended helper reqs is never defined before writing the paired
     doc_audit_requirements.txt (grammar.py:692), so executing grammar.py fails immediately; to use the auditor you’d need to extract the
     string contents manually.
   - conlaw.qmd:1 – Quarto notebook of constitutional-law notes with tables, case summaries, doctrinal outlines, and IRAC guidance; no

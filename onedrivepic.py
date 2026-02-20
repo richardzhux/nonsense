@@ -74,7 +74,7 @@ def plot_activity(dates):
 
 # ==== INPUT ====
 start_date_input = '20220101'  # Change as needed
-base_folder = '/Users/rx/Library/CloudStorage/OneDrive-Personal/P/Camera Roll'
+base_folder = 'media_archive'  # Change to your year/month media root
 
 # ==== RUN ====
 dates = parse_filenames(base_folder, start_date_input)

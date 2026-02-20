@@ -15,17 +15,17 @@ from geopy.point import Point
 # Core optics constants
 RAINBOW_ANGLE_DEG = 42.0
 
-# Coordinates for six fountains (center is roughly the average of these points)
+# Demo coordinates for six fountains (replace with your own points)
 FOUNTAINS: Sequence[Tuple[float, float]] = [
-    (42.054788, -87.672590),
-    (42.054573, -87.672849),
-    (42.054710, -87.673108),
-    (42.054945, -87.673079),
-    (42.054963, -87.672736),
-    (42.054756, -87.672833),
+    (40.00018, -100.00045),
+    (39.99992, -100.00062),
+    (40.00005, -100.00084),
+    (40.00027, -100.00079),
+    (40.00034, -100.00055),
+    (40.00014, -100.00066),
 ]
 
-CENTRAL_LAT, CENTRAL_LON = 42.054756, -87.672833
+CENTRAL_LAT, CENTRAL_LON = 40.00014, -100.00066
 
 
 @dataclass

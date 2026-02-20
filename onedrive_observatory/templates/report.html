@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Media Observatory</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f7f2ea;
+      --ink: #1f1a17;
+      --muted: #5c534a;
+      --card: #ffffffcc;
+      --accent: #0b7a75;
+      --accent-2: #ff8c42;
+      --accent-3: #d95d39;
+      --shadow: 0 18px 50px rgba(31, 26, 23, 0.15);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Avenir", "Gill Sans", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background: radial-gradient(circle at 10% 10%, rgba(11, 122, 117, 0.15), transparent 45%),
+        radial-gradient(circle at 90% 20%, rgba(255, 140, 66, 0.2), transparent 50%),
+        radial-gradient(circle at 30% 80%, rgba(217, 93, 57, 0.12), transparent 50%),
+        linear-gradient(160deg, #f7f2ea, #f2ebe3 60%, #efe5db 100%);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    .hero {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 32px;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 24px;
+      animation: fadeUp 0.7s ease;
+    }
+
+    .hero h1 {
+      font-family: "DM Serif Display", "Garamond", "Baskerville", serif;
+      font-size: clamp(32px, 4vw, 50px);
+      margin: 0 0 12px;
+    }
+
+    .hero p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-top: 20px;
+    }
+
+    .kpi-card {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 14px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+      animation: fadeUp 0.8s ease;
+    }
+
+    .kpi-card h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .kpi-card p {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+    }
+
+    .section {
+      margin-top: 36px;
+    }
+
+    .section-title {
+      font-family: "DM Serif Display", "Garamond", serif;
+      font-size: 26px;
+      margin: 0 0 16px;
+    }
+
+    .insights {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+    }
+
+    .insight-card {
+      background: var(--card);
+      padding: 16px;
+      border-radius: 14px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+      line-height: 1.4;
+    }
+
+    .chart-card {
+      background: var(--card);
+      padding: 16px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+      animation: fadeUp 0.9s ease;
+    }
+
+    .chart-card h4 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      color: var(--muted);
+      letter-spacing: 0.02em;
+    }
+
+    .filters {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+    }
+
+    .filters label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .filters input,
+    .filters select {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,0.1);
+      background: #fff;
+      font-family: inherit;
+    }
+
+    .filtered-kpis {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 900px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <div>
+        <h1>Media Observatory</h1>
+        <p>Static intelligence report for your photo and video archive. Trends, seasonality, and anomalies distilled into a single view.</p>
+        <p class="note">Date range: {{DATE_RANGE}}. Peak day: {{PEAK_DAY}}.</p>
+      </div>
+      <div>
+        <div class="kpi-grid">
+          <div class="kpi-card"><h3>Total captures</h3><p>{{TOTAL_FILES}}</p></div>
+          <div class="kpi-card"><h3>Photos / Videos</h3><p>{{TOTAL_PHOTOS}} / {{TOTAL_VIDEOS}}</p></div>
+          <div class="kpi-card"><h3>Unique files</h3><p>{{UNIQUE_FILES}}</p></div>
+          <div class="kpi-card"><h3>Duplicates</h3><p>{{DUPLICATES}}</p></div>
+          <div class="kpi-card"><h3>Near-dup groups</h3><p>{{NEAR_DUP_GROUPS}}</p></div>
+          <div class="kpi-card"><h3>Coverage</h3><p>{{COVERAGE_PCT}}</p></div>
+          <div class="kpi-card"><h3>Longest streak</h3><p>{{LONGEST_STREAK}} days</p></div>
+          <div class="kpi-card"><h3>Peak day</h3><p>{{PEAK_DAY}}</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Insights</h2>
+      <div class="insights">
+        {{INSIGHT_CARDS}}
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Depth metrics</h2>
+      <div class="kpi-grid">
+        <div class="kpi-card"><h3>Median active day</h3><p>{{MEDIAN_ACTIVE}}</p></div>
+        <div class="kpi-card"><h3>P90 active day</h3><p>{{P90_ACTIVE}}</p></div>
+        <div class="kpi-card"><h3>Velocity 30d</h3><p>{{VELOCITY_30D}}</p></div>
+        <div class="kpi-card"><h3>Velocity 90d</h3><p>{{VELOCITY_90D}}</p></div>
+        <div class="kpi-card"><h3>Top weekday</h3><p>{{WEEKDAY_PEAK}}</p></div>
+        <div class="kpi-card"><h3>Top hour</h3><p>{{HOUR_PEAK}}</p></div>
+        <div class="kpi-card"><h3>Mtime fallback</h3><p>{{MTIME_FALLBACK}}</p></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Interactive filter</h2>
+      <div class="filters">
+        <div>
+          <label>Start date</label>
+          <input type="date" id="filter-start" />
+        </div>
+        <div>
+          <label>End date</label>
+          <input type="date" id="filter-end" />
+        </div>
+        <div>
+          <label>Media type</label>
+          <select id="filter-type"></select>
+        </div>
+      </div>
+      <div class="filtered-kpis" id="filtered-kpis">
+        <div class="kpi-card"><h3>Filtered total</h3><p id="f-total">-</p></div>
+        <div class="kpi-card"><h3>Active days</h3><p id="f-active">-</p></div>
+        <div class="kpi-card"><h3>Avg per day</h3><p id="f-avg">-</p></div>
+        <div class="kpi-card"><h3>Median active</h3><p id="f-median">-</p></div>
+        <div class="kpi-card"><h3>Longest streak</h3><p id="f-streak">-</p></div>
+      </div>
+      <div class="chart-card">
+        <h4>Filtered daily activity</h4>
+        <div id="filtered-timeseries"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Activity timeline</h2>
+      <div class="chart-card">{{FIG_DAILY}}</div>
+      <div class="chart-card">{{FIG_WEEKLY}}</div>
+      <div class="chart-card">{{FIG_MONTHLY}}</div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Market lens</h2>
+      <div class="insights">
+        <div class="insight-card"><strong>Moving Average (MA)</strong><br>7/30/90-day smoothing to separate signal from noise and spot inflection points.</div>
+        <div class="insight-card"><strong>Volume</strong><br>Daily capture counts; spikes signal events or bursts of activity.</div>
+        <div class="insight-card"><strong>Momentum</strong><br>30-day MA relative to 90-day MA; positive means acceleration, negative means slowdown.</div>
+        <div class="insight-card"><strong>Volatility</strong><br>30-day rolling standard deviation; higher values indicate irregularity.</div>
+        <div class="insight-card"><strong>Drawdown</strong><br>Percent drop from the recent 30-day MA peak; shows slumps and recovery depth.</div>
+      </div>
+      <div class="chart-card">{{FIG_MARKET_MA}}</div>
+      <div class="chart-card">{{FIG_MARKET_VOLUME}}</div>
+      <div class="chart-card">{{FIG_MARKET_MOMENTUM}}</div>
+      <div class="chart-card">{{FIG_MARKET_VOLATILITY}}</div>
+      <div class="chart-card">{{FIG_MARKET_DRAWDOWN}}</div>
+      <p class="note">Interpretation note: this framing is descriptive and for personal pattern reading, not predictive or financial advice.</p>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Trends + seasonality</h2>
+      <div class="chart-card">{{FIG_STL}}</div>
+      <div class="chart-card">{{FIG_YOY}}</div>
+      <div class="chart-card">{{FIG_SEASON}}</div>
+      <div class="chart-card">{{FIG_HOUR}}</div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Media mix</h2>
+      <div class="chart-card">{{FIG_MEDIA}}</div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">File types</h2>
+      <div class="chart-card">{{FIG_FILE_TYPES}}</div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Calendar + yearly structure</h2>
+      <div class="chart-card">{{FIG_CALENDAR}}</div>
+      <div class="chart-card">{{FIG_SMALL}}</div>
+    </section>
+  </div>
+
+  <script>
+    const DATA = {{PAYLOAD_JSON}};
+    const dateList = DATA.date_list;
+    const dateIndex = Object.fromEntries(dateList.map((d, i) => [d, i]));
+
+    const typeSelect = document.getElementById('filter-type');
+    const startInput = document.getElementById('filter-start');
+    const endInput = document.getElementById('filter-end');
+
+    function populateSelect(select, values) {
+      select.innerHTML = '';
+      const optionAll = document.createElement('option');
+      optionAll.value = 'all';
+      optionAll.textContent = 'All';
+      select.appendChild(optionAll);
+      values.forEach((value, idx) => {
+        const option = document.createElement('option');
+        option.value = idx;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+    }
+
+    populateSelect(typeSelect, DATA.media_types);
+
+    startInput.value = dateList[0];
+    endInput.value = dateList[dateList.length - 1];
+
+    function computeStreaks(counts) {
+      let longestStreak = 0;
+      let currentStreak = 0;
+      for (const c of counts) {
+        if (c > 0) {
+          currentStreak += 1;
+          longestStreak = Math.max(longestStreak, currentStreak);
+        } else {
+          currentStreak = 0;
+        }
+      }
+      return longestStreak;
+    }
+
+    function applyFilters() {
+      const start = startInput.value;
+      const end = endInput.value;
+      const type = typeSelect.value;
+
+      const counts = new Array(dateList.length).fill(0);
+      const dates = DATA.records.dates;
+      const types = DATA.records.types;
+
+      for (let i = 0; i < dates.length; i += 1) {
+        const d = dates[i];
+        if (d < start || d > end) continue;
+        if (type !== 'all' && types[i] !== Number(type)) continue;
+        counts[dateIndex[d]] += 1;
+      }
+
+      const total = counts.reduce((a, b) => a + b, 0);
+      const activeDays = counts.filter(c => c > 0).length;
+      const avg = total / counts.length;
+      const activeSorted = counts.filter(c => c > 0).sort((a, b) => a - b);
+      const median = activeSorted.length
+        ? activeSorted[Math.floor(activeSorted.length / 2)]
+        : 0;
+
+      document.getElementById('f-total').textContent = total;
+      document.getElementById('f-active').textContent = activeDays;
+      document.getElementById('f-avg').textContent = avg.toFixed(2);
+      document.getElementById('f-median').textContent = median;
+      document.getElementById('f-streak').textContent = computeStreaks(counts);
+
+      const trace = {
+        x: dateList,
+        y: counts,
+        type: 'scatter',
+        mode: 'lines',
+        line: { color: '#0b7a75' },
+      };
+      const layout = {
+        margin: { l: 30, r: 20, t: 40, b: 30 },
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        font: { family: 'IBM Plex Sans, Avenir, Gill Sans, Trebuchet MS, sans-serif', size: 12 },
+        xaxis: { showgrid: false },
+        yaxis: { showgrid: true, gridcolor: 'rgba(0,0,0,0.08)' },
+      };
+      Plotly.react('filtered-timeseries', [trace], layout, { displayModeBar: false });
+    }
+
+    typeSelect.addEventListener('change', applyFilters);
+    startInput.addEventListener('change', applyFilters);
+    endInput.addEventListener('change', applyFilters);
+
+    applyFilters();
+  </script>
+</body>
+</html>

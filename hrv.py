@@ -1,3 +1,5 @@
+import os
+
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
@@ -9,10 +11,14 @@ from datetime import datetime, timedelta
 import time
 
 # Configure WebDriver
-service = Service('/Users/rx/Documents/chromedriver/chromedriver')  # Update with your ChromeDriver path
+CHROMEDRIVER_PATH = os.getenv("CHROMEDRIVER_PATH", "chromedriver")
+service = Service(CHROMEDRIVER_PATH)
 options = webdriver.ChromeOptions()
 options.add_argument('--headless')  # Run in headless mode
 driver = webdriver.Chrome(service=service, options=options)
+
+HISTORY_PATH = os.getenv("WUNDERGROUND_HISTORY_PATH", "us/state/city/STATION_ID")
+OUTPUT_CSV = os.getenv("WEATHER_OUTPUT_CSV", "weather_data.csv")
 
 # Define date range
 start_date = datetime(2024, 11, 11)
@@ -25,7 +31,7 @@ weather_data = []
 current_date = start_date
 while current_date <= end_date:
     date_str = current_date.strftime('%Y-%m-%d')
-    url = f"https://www.wunderground.com/history/daily/us/il/evanston/KILEVANS56/date/{date_str}"
+    url = f"https://www.wunderground.com/history/daily/{HISTORY_PATH}/date/{date_str}"
     driver.get(url)
 
     # Wait for the page to load
@@ -81,5 +87,5 @@ driver.quit()
 
 # Save data to CSV
 df = pd.DataFrame(weather_data)
-df.to_csv('evanston_weather_data.csv', index=False)
-print("Data saved to evanston_weather_data.csv")
+df.to_csv(OUTPUT_CSV, index=False)
+print(f"Data saved to {OUTPUT_CSV}")
